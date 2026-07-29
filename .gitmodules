@@ -1,0 +1,3 @@
+[submodule "tools/hiper"]
+	path = tools/hiper
+	url = git@github.com:ROCm/HIPER.git
