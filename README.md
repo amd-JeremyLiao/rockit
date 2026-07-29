@@ -1,10 +1,10 @@
-# GPU Debug Toolkit
+# rockit
 
 AMD GPU hang 診斷工具庫 + 雙層知識庫。在 Cursor 中開啟此 project，描述問題即可獲得診斷建議。
 
 ## 閉環診斷流程
 
-![GPU Debug Toolkit 診斷流程](assets/diagnostic_flow.png)
+![rockit 診斷流程](assets/diagnostic_flow.png)
 
 ### 工具選擇順序
 

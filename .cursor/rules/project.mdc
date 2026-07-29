@@ -1,5 +1,5 @@
 ---
-description: GPU Debug Toolkit 全域行為準則
+description: rockit 全域行為準則
 globs: ["**/*"]
 alwaysApply: true
 ---

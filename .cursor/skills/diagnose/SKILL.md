@@ -27,7 +27,7 @@ sudo ./tools/collect_hang_info.sh all
 sudo ./collect_hang_info.sh all -o /tmp/hang_diag
 # 完成後打包：tar czf hang_diag.tar.gz -C /tmp hang_diag_*
 ```
-請使用者將 tarball 或各檔案內容貼回。
+請使用者將輸出目錄打包或各檔案內容貼回。
 
 ### Step 3: 解析輸出 + Layer 路由
 

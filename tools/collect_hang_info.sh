@@ -6,7 +6,7 @@
 # Works from inside a container or on bare metal.
 #
 # Usage:
-#   ./collect_hang_info.sh <pid|name|all> [pid2 pid3 ...] [-o output_dir] [--upload [username]]
+#   ./collect_hang_info.sh <pid|name|all> [pid2 pid3 ...] [-o output_dir]
 #
 # Examples:
 #   ./collect_hang_info.sh 12345                          # single PID
@@ -14,8 +14,6 @@
 #   ./collect_hang_info.sh python3                         # all matching by name
 #   ./collect_hang_info.sh all                             # auto-detect GPU processes
 #   ./collect_hang_info.sh 12345 67890 -o /tmp/diag        # custom output dir
-#   ./collect_hang_info.sh 12345 --upload                  # collect + upload to S3
-#   ./collect_hang_info.sh 12345 --upload myname           # upload under s3://home/myname/
 # =============================================================================
 set -uo pipefail
 
@@ -26,22 +24,15 @@ fi
 
 OUTDIR="/tmp/hang_diag_$(date +%Y%m%d_%H%M%S)"
 TARGETS=()
-UPLOAD=0
-UPLOAD_USER=""
-
 while [ $# -gt 0 ]; do
     case "$1" in
         -o)       OUTDIR="$2"; shift 2 ;;
-        --upload) UPLOAD=1; shift
-                  if [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]] && [[ ! "$1" =~ ^[0-9]+$ ]] && [ "$1" != "all" ]; then
-                      UPLOAD_USER="$1"; shift
-                  fi ;;
         *)        TARGETS+=("$1"); shift ;;
     esac
 done
 
 if [ ${#TARGETS[@]} -eq 0 ]; then
-    echo "Usage: $0 <pid|name|all> [pid2 pid3 ...] [-o output_dir] [--upload [username]]"
+    echo "Usage: $0 <pid|name|all> [pid2 pid3 ...] [-o output_dir]"
     exit 1
 fi
 
@@ -506,50 +497,4 @@ if [ "$EVICT_COUNT" -gt 0 ]; then
 fi
 
 log ""
-
-# =========================================================================
-# H. Upload (optional)
-# =========================================================================
-if [ "$UPLOAD" -eq 1 ]; then
-    log "=============================="
-    log "H. Upload to S3"
-    log "=============================="
-
-    TARBALL="/tmp/$(basename "$OUTDIR").tar.gz"
-    log "Packing $TARBALL ..."
-    tar czf "$TARBALL" -C "$(dirname "$OUTDIR")" "$(basename "$OUTDIR")"
-    log "  -> $(du -h "$TARBALL" | awk '{print $1}')"
-
-    # S3 endpoint — set S3_ENDPOINT env var or configure DNS before using --upload
-    S3_ENDPOINT="${S3_ENDPOINT:-https://amd-afde.top}"
-
-    # Ensure awscli is available
-    if ! command -v aws > /dev/null 2>&1; then
-        log "Installing awscli..."
-        pip install --user awscli 2>&1 | tail -1
-        export PATH="$HOME/.local/bin:$PATH"
-    fi
-
-    export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID before using --upload}"
-    export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY before using --upload}"
-    FNAME=$(basename "$TARBALL")
-    HOSTNAME_TAG=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-')
-    DATE_TAG=$(date +%Y%m%d)
-
-    if [ -z "$UPLOAD_USER" ]; then
-        UPLOAD_USER=$(whoami)
-    fi
-
-    USER_S3_PATH="${UPLOAD_USER}/hang_diag/${HOSTNAME_TAG}/${DATE_TAG}/${FNAME}"
-    log "Uploading to s3://home/$USER_S3_PATH ..."
-    if aws s3 cp "$TARBALL" "s3://home/$USER_S3_PATH" --endpoint-url "$S3_ENDPOINT" 2>&1; then
-        log "  Uploaded: s3://home/$USER_S3_PATH"
-    else
-        fail "  Upload to s3://home/ failed"
-    fi
-
-    log "Upload done."
-else
-    log "To share: tar czf hang_diag.tar.gz -C $(dirname "$OUTDIR") $(basename "$OUTDIR")"
-    log "To upload: re-run with --upload [username]"
-fi
+log "To share: tar czf hang_diag.tar.gz -C $(dirname "$OUTDIR") $(basename "$OUTDIR")"
