@@ -1,0 +1,17 @@
+=== hipDeviceSynchronize Hang Reproducer ===
+Bug: SyncAllStreams(deadline=0) — K-6 intentionally doesn't fix this
+     hipDeviceSynchronize iterates ALL streams serially, no aggregate timeout
+
+VRAM: 205.6 GB free
+Plan: 128 poison streams + 8 D2D × 64 MB + spin kernel
+Expected stall: 136 streams × 4s = 544 seconds (9.1 min)
+
+Env: ROCR_SERVICE_SURVIVAL=1 ROCR_SIGNAL_WAIT_MAX_MS=4000 HIP_FREE_SYNC_FAIL_MS=4000
+     (all protections active — hipDeviceSynchronize still hangs)
+
+[1] Spin kernel (GPU 100%)...
+[2] D2D flood (8 × 64 MB)...
+[3] Poison streams (128)...
+    128/128 active
+[4] Starting victim thread (hipDeviceSynchronize loop)...
+

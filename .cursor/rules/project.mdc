@@ -1,0 +1,29 @@
+---
+description: GPU Debug Toolkit 全域行為準則
+globs: ["**/*"]
+alwaysApply: true
+---
+
+此 project 是 GPU hang 診斷工具庫 + 雙層知識庫。
+知識庫分兩層：runtime/ (CLR+ROCR) 和 driver/ (KFD+GPU HW)。
+
+當使用者描述問題時：
+1. 先讀 knowledge/_index.md 的快速路由表，判斷問題在哪一層
+2. 進入對應層的 _index.md，匹配症狀關鍵字
+3. 讀取匹配的 symptoms/*.md 完整內容
+4. 若症狀檔標註 cross_layer_ref，也讀另一層的相關檔案
+5. 根據症狀推薦工具（參考 tools/_coverage.md）
+6. 若有 playbook，提供逐步 SOP
+
+回答時：
+- 一定要說明判斷在哪一層（runtime 或 driver）以及原因
+- 引用具體的症狀檔案或 playbook 路徑
+- 推薦工具時要附上完整的執行命令
+- 跨層問題要同時引用兩層的相關資料
+- 用繁體中文回答
+
+目錄結構速覽：
+- tools/           → 診斷工具腳本 (.sh) + 使用指南 (.md)
+- knowledge/runtime/ → CLR (HIP) + ROCR (HSA) 層的症狀、playbook、案例
+- knowledge/driver/  → KFD driver + GPU hardware 層的症狀、playbook、案例
+- coverage_report.html → 工具覆蓋範圍視覺化報告

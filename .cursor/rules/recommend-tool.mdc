@@ -1,0 +1,27 @@
+---
+description: 根據症狀推薦診斷工具並提供完整執行命令
+globs: ["tools/**"]
+---
+
+當需要推薦診斷工具時：
+1. 讀取 tools/_coverage.md 了解每個工具可抓到的分層與部件
+2. 根據問題所在層級推薦工具
+
+Runtime 層工具優先順序：
+1. rocgdb -batch -p $PID — CPU/GPU thread backtrace + waves
+2. HIPER (LD_PRELOAD=libhiper.so) — HIP API timeline + kernel 錄製
+3. ROCm Debug Agent (LD_PRELOAD=librocm-debug-agent.so) — crash/fault 自動診斷
+
+Driver/GPU 層工具優先順序：
+1. 手動: amdgpu_fence_info — 確認哪個 ring stuck
+2. dump_kfd_snapshots.sh — 多輪 fence diff + rls/hqds/mqds
+3. dump_sdma_registers.sh — SDMA 暫存器完整 dump
+4. 手動: dyndbg + rls/hqds/mqds — KFD dynamic debug
+
+初始收集（任何問題都先跑）：
+- collect_hang_info.sh <pid|name|all> — 一次收集 A-H 區段所有資訊
+
+推薦時必須：
+- 附上完整可複製的命令（含 sudo、路徑）
+- 說明預期輸出中要看什麼
+- 說明輸出中哪些 pattern 對應哪個已知症狀
