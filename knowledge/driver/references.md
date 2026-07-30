@@ -7,6 +7,7 @@
 | 文件 | 位置 | 什麼時候需要查 |
 |------|------|--------------|
 | Graphics IP Register Specifications | AMD internal / 筆記本 | 需要確認特定暫存器的 bit field 定義（如 SDMA_STATUS_REG 各 bit 含義） |
+| AMD IP Register Database (ADC) | [https://adcweb05.amd.com/](https://adcweb05.amd.com/) (AMD intranet) | 線上查詢各 IP block（SDMA, GFX, MMHUB 等）的完整暫存器定義、bit field、reset value |
 | SDMA Microcode Spec | AMD internal | 追蹤 SDMA engine 行為、packet format |
 | GFX/Compute IP Spec | AMD internal | CP/MEC/CPC 暫存器定義 |
 
