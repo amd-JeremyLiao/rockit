@@ -82,7 +82,36 @@ cat /sys/class/kfd/kfd/topology/nodes/*/properties | grep -E 'node_id|location_i
 
 詳細的 UMR 暫存器讀取 SOP 見 `dump_sdma_registers.sh` 原始碼。
 
-## 4. dmesg GPU 關鍵字過濾
+## 4. 讀取 HSA Signal Value（從 process memory 直接讀）
+
+當需要確認某個 HSA signal 的當前值（例如判斷 SDMA copy 的 completion signal 是否已被 signal），可以直接從 `/proc/$PID/mem` 讀取 signal value 的 host address：
+
+```bash
+#!/bin/bash
+PID=2367319           # 目標 process 的 PID
+ADDR=0x7ffff73ffa88   # signal value 的 host address
+
+sudo dd if="/proc/$PID/mem" \
+  iflag=skip_bytes,count_bytes \
+  skip="$((ADDR))" count=8 status=none |
+  xxd -e -g8
+```
+
+**如何取得 ADDR：**
+- 從 rocgdb attach 後用 `print signal->val` 或 `x/gx &signal->value`
+- 從 ROCm Debug Agent 輸出的 queue/dispatch 資訊
+- 從 HIPER trace 的 signal metadata
+
+**判讀重點：**
+- signal value = 0 → signal 已完成（已被 signal）
+- signal value > 0 → 還有 N 個未完成的操作
+- signal value 長時間不變（多次讀取比對）→ 對應的 SDMA/compute 操作可能 stuck
+
+**用途：**
+- 不需要 attach debugger 就能確認 signal 狀態，對 production process 干擾最小
+- 搭配 fence_info 使用：fence stuck + signal value 不動 = 確認 SDMA hang
+
+## 5. dmesg GPU 關鍵字過濾
 
 ```bash
 dmesg | grep -iE 'amdgpu|amdkfd|kfd|sdma|fence|evict|timeout|reset|gpu.*(fault|error|hang)'
