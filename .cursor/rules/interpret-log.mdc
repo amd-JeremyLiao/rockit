@@ -1,0 +1,23 @@
+---
+description: 當使用者貼上 log 內容請求解讀時，比對知識庫 log patterns
+globs: ["knowledge/**"]
+---
+
+Log 解讀流程：
+1. 辨識 log 來源（dmesg / amdgpu_fence_info / rocgdb / HIPER / KFD debugfs 等）
+2. 根據來源判斷層級：
+   - dmesg / fence_info / KFD debugfs → 讀 knowledge/driver/_index.md
+   - rocgdb backtrace / HIPER output → 讀 knowledge/runtime/_index.md
+3. 掃描對應層 _index.md 的 log_patterns 尋找匹配
+4. 讀取匹配的症狀檔案，按照「你會看到什麼」段落對照
+
+各類 log 的關鍵判讀點：
+- fence_info: signaled vs emitted 差值；持續不變 = stuck
+- dmesg: amdgpu/amdkfd/kfd/sdma/reset/evict/timeout 關鍵字
+- rocgdb: AMDGPU Wave 數量（0 = 可能在 driver/SDMA 層）；thread 卡在哪個 function
+- HIPER: 最後執行的 HIP API 是什麼；kernel launch 是否完成
+- KFD debugfs (rls/hqds/mqds): queue 是否存在、rptr vs wptr
+- SDMA registers: STATUS_REG 值、RB_RPTR vs RB_WPTR
+
+若找到案例 match，引用 cases/ 的標註 log 做比較。
+若無匹配，標記為潛在新症狀，建議使用者補充更多資訊。
