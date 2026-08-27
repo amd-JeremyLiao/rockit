@@ -32,4 +32,5 @@
 
 - Graphics IP Register Spec 是 AMD confidential，不可放進公開 repo
 - 查暫存器定義時，注意 IP version（如 sdma 4.4.5 vs 6.0）對應不同的 register layout
-- UMR 的暫存器名稱可能與 spec 不完全一致（如 PREEMPT vs RB_PREEMPT），見 `dump_sdma_registers.sh` 中的 alias 處理
+- UMR 的暫存器名稱可能與 spec 不完全一致（如 PREEMPT vs RB_PREEMPT），見 `tools/debug_scripts/03_dump_sdma_registers.sh` 中的 alias 處理
+- UMR 安全分級（哪些路徑會殺 host）見 [tools/umr_safety.md](../../tools/umr_safety.md)

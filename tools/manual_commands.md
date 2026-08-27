@@ -46,41 +46,16 @@ sudo cat /sys/kernel/debug/kfd/mqds   # Memory Queue Descriptors
 - hqds：每個 pipe/queue slot 的 mapping
 - mqds：queue 的 base addr、rptr vs wptr（rptr != wptr → queue 有未消化的命令）
 
-## 3. UMR 暫存器讀取注意事項
+## 3. UMR 使用注意事項
 
-### GPU instance index 與 CPU 平台的關係
+UMR 的安全分級、cpc/waves 鐵律、Intel/AMD CPU 的 instance index 差異，全部整理在
+**[umr_safety.md](umr_safety.md)**。執行任何 UMR 命令前先讀那份。
 
-UMR 內部會根據 CPU 平台調整 GPU instance index：
-
-| CPU 平台 | UMR index 行為 | 你要做什麼 |
-|---------|---------------|-----------|
-| **AMD CPU** | UMR 自動 +2 | 直接用，不需調整 |
-| **Intel CPU** | 需要手動 -2 | 執行時 instance index 要減 2 |
-
-**為什麼：** UMR 設計時假設 AMD CPU 平台（iGPU 等佔了前面的 index），Intel CPU 沒有這些裝置，不做 -2 會指到錯誤的 XCC（compute chiplet），讀到的暫存器值是錯的。
-
-**範例：**
-```bash
-# AMD CPU 機器 — 直接用 instance 0
-sudo umr -i 0 -r sdma0.mmSDMA0_STATUS_REG
-
-# Intel CPU 機器 — 實際 GPU 0 要用 instance -2（或確認 umr --script instances 的輸出）
-sudo umr --script instances    # 先看實際 instance 編號
-sudo umr -i <correct_instance> -r sdma0.mmSDMA0_STATUS_REG
-```
-
-### 不要用 PID 判斷 GPU instance
-
-用 PID 來推斷 GPU instance 不可靠。應該用 KFD topology 或 `umr --script instances` 搭配 PCI BDF 做對應：
-
-```bash
-# 正確做法：用 BDF 對應
-umr --script instances                    # 取得 UMR instance 列表
-ls -l /sys/class/drm/card*/device         # 取得 DRM card → PCI BDF 對應
-cat /sys/class/kfd/kfd/topology/nodes/*/properties | grep -E 'node_id|location_id'
-```
-
-詳細的 UMR 暫存器讀取 SOP 見 `dump_sdma_registers.sh` 原始碼。
+重點摘要：
+- debugfs 路徑（`-r`、`--script instances`、queue_doctor）永遠安全
+- `--tool cpc` 和 `-O bits,halt_waves` 是 MMIO 直讀，**條件性殺 host**
+- Intel CPU 平台 instance index 要 -2（AMD CPU 自動 +2）
+- 不要用 PID 判斷 GPU instance，用 PCI BDF 對應
 
 ## 4. 讀取 HSA Signal Value（從 process memory 直接讀）
 

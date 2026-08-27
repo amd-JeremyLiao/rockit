@@ -10,12 +10,17 @@ AMD GPU hang 診斷工具庫 + 雙層知識庫。在 Cursor 中開啟此 project
 
 每一輪迭代中，agent 按症狀推薦的優先順序逐一選擇工具：
 
-| Runtime 層 | Driver / GPU 層 |
+| Runtime 層 | Driver / GPU 層（全部走安全路徑） |
 |-----------|-----------------|
 | 1. rocgdb batch attach | 1. 手動: amdgpu_fence_info |
-| 2. HIPER (HIP API 錄製) | 2. dump_kfd_snapshots.sh |
-| 3. ROCm Debug Agent | 3. dump_sdma_registers.sh |
-| | 4. 手動: dyndbg + rls/hqds/mqds |
+| 2. HIPER (HIP API 錄製) | 2. 02_umr_queue_doctor.py（wptr≠rptr 鐵證） |
+| 3. ROCm Debug Agent | 3. 04_dump_kfd_snapshots.sh |
+| | 4. 03_dump_sdma_registers.sh |
+| | 5. 手動: dyndbg + rls/hqds/mqds |
+
+> **安全警告：** UMR 的 `--tool cpc` 和 `-O bits,halt_waves` 是 MMIO 直讀，會殺 host。
+> 執行前必讀 [tools/umr_safety.md](tools/umr_safety.md)。判定 hang 的鐵證是 queue_doctor 的
+> `wptr != rptr`，不需要 cpc。
 
 ### 兩種 Report 輸出
 
@@ -47,24 +52,30 @@ AI 會自動走上面的閉環流程。
 ## 目錄結構
 
 ```
-gpu-debug-toolkit/
+rockit/
 ├── .cursor/
 │   ├── rules/                     # AI 行為規則
 │   │   ├── project.mdc            # 全域規則 + 雙層路由
 │   │   ├── diagnose.mdc           # 症狀診斷流程
-│   │   ├── recommend-tool.mdc     # 工具推薦邏輯
+│   │   ├── recommend-tool.mdc     # 工具推薦邏輯 + 安全禁令
 │   │   └── interpret-log.mdc      # Log 解讀規則
 │   └── skills/
 │       └── diagnose/SKILL.md      # 閉環診斷 skill（5 輪迭代 + 雙出口）
 │
-├── tools/                         # 診斷工具腳本
-│   ├── collect_hang_info.sh       # 一次性收集所有診斷資料
-│   ├── dump_kfd_snapshots.sh      # KFD debugfs 多輪快照 + fence diff
-│   ├── dump_sdma_registers.sh     # SDMA 暫存器完整 dump
-│   ├── manual_commands.md         # 手動命令參考 (fence_info, dyndbg)
+├── tools/
+│   ├── umr_safety.md              # UMR 安全分級（執行前必讀）
+│   ├── collect_hang_info.sh       # 輕量跨層概況收集
+│   ├── manual_commands.md         # 手動命令參考 (fence_info, dyndbg, signal)
 │   ├── rocgdb_cheatsheet.md       # rocgdb 常用命令速查
 │   ├── debug_agent_guide.md       # ROCm Debug Agent 指南
-│   └── _coverage.md               # 工具覆蓋對照表
+│   ├── _coverage.md               # 工具覆蓋對照表
+│   ├── debug_scripts/             # submodule: ROCm Forensics Toolkit
+│   │   ├── 02_umr_queue_doctor.py     # queue 診斷主力（wptr/rptr 鐵證）
+│   │   ├── 03_dump_sdma_registers.sh  # SDMA 暫存器 dump
+│   │   ├── 04_dump_kfd_snapshots.sh   # KFD 多輪快照 + fence diff
+│   │   ├── 06_collect_all_gpu_debug.sh # 完整 bundle 採集入口
+│   │   └── ...                        # 05/08 為致命工具，見 umr_safety.md
+│   └── hiper/                     # submodule: HIPER (HIP record/replay)
 │
 ├── knowledge/                     # 雙層知識庫 (RAG)
 │   ├── _index.md                  # 總索引 + 層級路由
@@ -75,23 +86,36 @@ gpu-debug-toolkit/
 │   │   └── cases/                 # d2h_perm_hang, alibaba_waitrelaxed
 │   └── driver/                    # KFD driver + GPU hardware
 │       ├── _index.md
+│       ├── references.md          # 規格書 / 原始碼 / 工具文件索引
 │       ├── symptoms/              # sdma_fence_stuck, rdma_pin_rejected, ...
-│       ├── playbooks/             # sdma_fence_debug, timeout_death_map, ...
+│       ├── playbooks/             # hang_collection_sop, sdma_fence_debug, ...
 │       └── cases/                 # alibaba_rdma_underflow, sdma_fence_evidence
 │
 └── README.md                      # 本文件
 ```
 
+Clone 時要帶 submodule：
+
+```bash
+git clone --recurse-submodules <repo-url>
+# 已 clone 過的話
+git submodule update --init --recursive
+```
+
 ## 工具速覽
 
-| 工具 | 層級 | 用途 |
-|------|------|------|
-| collect_hang_info.sh | 全層 | 任何 hang 的第一步 |
-| dump_kfd_snapshots.sh | KFD/Driver | fence diff + KFD queue 詳細 |
-| dump_sdma_registers.sh | GPU HW | SDMA 暫存器完整 dump |
-| rocgdb | CLR + ROCR + GPU | CPU/GPU thread debug + wave |
-| HIPER | CLR | HIP API 錄製 + replay |
-| Debug Agent | ROCR + GPU | crash/fault 自動診斷 |
+| 工具 | 層級 | 用途 | 安全性 |
+|------|------|------|--------|
+| collect_hang_info.sh | 全層 | 快速取得跨層概況 | 安全 |
+| 06_collect_all_gpu_debug.sh | 全層 | 完整 bundle 採集 | 安全（需 `--skip-cpc --skip-waves`） |
+| 02_umr_queue_doctor.py | KFD/GPU | wptr≠rptr 鐵證、MQD、pending packets | 安全 |
+| 04_dump_kfd_snapshots.sh | KFD/Driver | fence diff + KFD queue 詳細 | 安全 |
+| 03_dump_sdma_registers.sh | GPU HW | SDMA 暫存器完整 dump | 安全 |
+| 05_dump_all_cpc_info.sh | GPU HW | CPC 狀態 | **致命（預設模式殺 host）** |
+| 08_dump_all_gpu_waves.sh | GPU HW | wave 狀態 | **致命（`--halt-waves`）** |
+| rocgdb | CLR + ROCR + GPU | CPU/GPU thread debug + wave | 安全 |
+| HIPER | CLR | HIP API 錄製 + replay | 安全 |
+| Debug Agent | ROCR + GPU | crash/fault 自動診斷 | 安全 |
 
 ## 如何新增知識
 

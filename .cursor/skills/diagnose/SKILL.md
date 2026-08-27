@@ -130,6 +130,20 @@ excluded: [...]
 ---
 ```
 
+### 安全禁令（迭代時絕不可違反）
+
+自動執行工具時，以下命令**永遠不可自動跑**，即使在本機全自動模式：
+
+- `tools/debug_scripts/05_dump_all_cpc_info.sh` 預設模式（8 卡全迴圈 + `halt_if_hws_hang=1`，已知 host-killer）
+- `umr --tool cpc` 跨 XCC 0-7 全範圍
+- `umr -O bits,halt_waves` 對非 hung GPU
+- 任何未加 `timeout` 的 cpc / halt_waves 呼叫
+
+需要 cpc / waves 時，先讀 `tools/umr_safety.md`，並向使用者說明風險後才組裝安全版命令
+（hung GPU only、XCC 0-3、獨立呼叫、`timeout 30`、每次檢查 uptime、nohup 背景跑）。
+
+判定 hang 的鐵證是 queue_doctor 的 `wptr != rptr`，**不需要** cpc。
+
 ### 工具清單速查
 
 **Runtime 層（按優先順序）：**
@@ -137,8 +151,16 @@ excluded: [...]
 2. `HIPER_LIGHT_MODE=1 LD_PRELOAD=libhiper.so ./app` (需事前掛載)
 3. `HSA_ENABLE_DEBUG=1 LD_PRELOAD=/opt/rocm/lib/librocm-debug-agent.so ./app`
 
-**Driver/GPU 層（按優先順序）：**
+**Driver/GPU 層（按優先順序，全部走安全路徑）：**
 1. `for f in $(sudo find /sys/kernel/debug/dri/ -name amdgpu_fence_info); do sudo cat $f; done`
-2. `sudo ./tools/dump_kfd_snapshots.sh -n 3 -i 5`
-3. `sudo ./tools/dump_sdma_registers.sh`
-4. `echo 'file */amdkfd/kfd_device_queue_manager.c +p' | sudo tee /sys/kernel/debug/dynamic_debug/control && sudo cat /sys/kernel/debug/kfd/rls /sys/kernel/debug/kfd/hqds /sys/kernel/debug/kfd/mqds`
+2. `python3 tools/debug_scripts/02_umr_queue_doctor.py --pid $PID --samples 3 --interval 10`
+3. `sudo tools/debug_scripts/04_dump_kfd_snapshots.sh --snapshots 3 --interval 5`
+4. `sudo tools/debug_scripts/03_dump_sdma_registers.sh`
+5. `echo 'file */amdkfd/kfd_device_queue_manager.c +p' | sudo tee /sys/kernel/debug/dynamic_debug/control && sudo cat /sys/kernel/debug/kfd/rls /sys/kernel/debug/kfd/hqds /sys/kernel/debug/kfd/mqds`
+
+**一次性完整採集（安全模式）：**
+```bash
+tools/debug_scripts/06_collect_all_gpu_debug.sh --pid $PID --skip-cpc --skip-waves --skip-aql-queue
+```
+
+現場採集完整流程見 `knowledge/driver/playbooks/hang_collection_sop.md`。

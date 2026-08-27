@@ -17,17 +17,21 @@
 
 1. `collect_hang_info.sh` — 一次性收集 KFD queue + dmesg + UMR (E/F 段)
 2. 手動: `amdgpu_fence_info` — 快速確認哪個 ring stuck
-3. `dump_kfd_snapshots.sh` — 多輪 fence diff + rls/hqds/mqds + trace events
-4. `dump_sdma_registers.sh` — SDMA 暫存器完整 dump (100+ 筆)
+3. `tools/debug_scripts/02_umr_queue_doctor.py` — wptr/rptr 鐵證 + MQD + pending packets
+4. `tools/debug_scripts/04_dump_kfd_snapshots.sh` — 多輪 fence diff + rls/hqds/mqds + trace events
+5. `tools/debug_scripts/03_dump_sdma_registers.sh` — SDMA 暫存器完整 dump (100+ 筆)
 5. 手動: `dyndbg + rls/hqds/mqds` — KFD dynamic debug 即時狀態
 
 ## Playbook 索引
 
 | 場景 | Playbook |
 |---|---|
+| hang 現場採集（三階段 SOP） | [hang_collection_sop](playbooks/hang_collection_sop.md) |
 | SDMA fence 問題 | [sdma_fence_debug](playbooks/sdma_fence_debug.md) |
 | Timeout 全路徑分析 | [timeout_death_map](playbooks/timeout_death_map.md) |
 | Wait point 審計 | [wait_lifecycle](playbooks/wait_lifecycle.md) |
+
+> 執行 UMR cpc / waves 前必讀 [tools/umr_safety.md](../../tools/umr_safety.md)：有些路徑會殺 host。
 
 ## 歷史案例
 

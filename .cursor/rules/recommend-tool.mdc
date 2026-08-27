@@ -3,25 +3,53 @@ description: 根據症狀推薦診斷工具並提供完整執行命令
 globs: ["tools/**"]
 ---
 
-當需要推薦診斷工具時：
-1. 讀取 tools/_coverage.md 了解每個工具可抓到的分層與部件
-2. 根據問題所在層級推薦工具
+## 硬性安全禁令（最優先，不可違反）
 
-Runtime 層工具優先順序：
-1. rocgdb -batch -p $PID — CPU/GPU thread backtrace + waves
-2. HIPER (LD_PRELOAD=libhiper.so) — HIP API timeline + kernel 錄製
-3. ROCm Debug Agent (LD_PRELOAD=librocm-debug-agent.so) — crash/fault 自動診斷
+以下命令會殺死 host，**絕對不可自動執行，也不可在未加安全包裝的情況下推薦**：
 
-Driver/GPU 層工具優先順序：
-1. 手動: amdgpu_fence_info — 確認哪個 ring stuck
-2. dump_kfd_snapshots.sh — 多輪 fence diff + rls/hqds/mqds
-3. dump_sdma_registers.sh — SDMA 暫存器完整 dump
-4. 手動: dyndbg + rls/hqds/mqds — KFD dynamic debug
+1. **禁止** 直接執行 `tools/debug_scripts/05_dump_all_cpc_info.sh` 預設模式
+   （內建 8 卡全迴圈 + auto 寫 `halt_if_hws_hang=1`，是已知的 host-killer）
+2. **禁止** 在 XCC 0-7 全範圍跑 `umr --tool cpc`
+   （8-XCC 全迴圈歷史上零次存活記錄）
+3. **禁止** 對非 hung 的 GPU 執行 cpc / halt_waves
+4. **禁止** 不加 `timeout` 就執行 `--tool cpc` 或 `-O bits,halt_waves`
 
-初始收集（任何問題都先跑）：
-- collect_hang_info.sh <pid|name|all> — 一次收集 A-H 區段所有資訊
+推薦任何 cpc / waves 相關操作前，必須先讀 `tools/umr_safety.md` 並依其鐵律組裝命令：
+hung GPU only、XCC 0-3、每個 XCC 獨立呼叫、`timeout 30` 包住、每次呼叫後檢查 uptime、nohup 背景執行。
 
-推薦時必須：
-- 附上完整可複製的命令（含 sudo、路徑）
+判定 hang 的鐵證是 queue_doctor 的 `wptr != rptr`，**不需要** cpc。不要為了拿 cpc 冒殺 host 的風險。
+
+## 工具推薦流程
+
+1. 讀取 `tools/_coverage.md` 了解每個工具可抓到的分層與部件
+2. 根據問題所在層級推薦工具，並依安全性排序（安全路徑優先）
+
+### Runtime 層工具優先順序
+
+1. `rocgdb -batch -p $PID` — CPU/GPU thread backtrace + waves
+2. `HIPER` (`LD_PRELOAD=libhiper.so`) — HIP API timeline + kernel 錄製
+3. `ROCm Debug Agent` (`LD_PRELOAD=librocm-debug-agent.so`) — crash/fault 自動診斷
+
+### Driver / GPU 層工具優先順序（全部走安全路徑）
+
+1. 手動 `amdgpu_fence_info` — 確認哪個 ring stuck
+2. `tools/debug_scripts/02_umr_queue_doctor.py` — wptr/rptr 鐵證、MQD、pending packets
+3. `tools/debug_scripts/04_dump_kfd_snapshots.sh` — rls/hqds/mqds + fence diff + trace
+4. `tools/debug_scripts/03_dump_sdma_registers.sh` — SDMA 暫存器完整 dump
+5. 手動 dyndbg + rls/hqds/mqds — KFD dynamic debug
+
+### 一次性完整採集
+
+```bash
+# 安全模式（跳過致命的 cpc/waves）
+tools/debug_scripts/06_collect_all_gpu_debug.sh --pid <PID> --skip-cpc --skip-waves --skip-aql-queue
+```
+
+`collect_hang_info.sh` 為輕量替代方案，適合快速取得跨層概況。
+
+## 推薦時必須做到
+
+- 附上完整可複製的命令（含 sudo、路徑、timeout）
 - 說明預期輸出中要看什麼
 - 說明輸出中哪些 pattern 對應哪個已知症狀
+- 涉及 cpc / waves 時，明確標註風險並引用 `tools/umr_safety.md`

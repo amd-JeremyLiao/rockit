@@ -36,15 +36,19 @@ fence_info: signaled == emitted?
    ```bash
    for f in $(sudo find /sys/kernel/debug/dri/ -name amdgpu_fence_info); do echo "=== $f ==="; sudo cat "$f"; done
    ```
-2. **dump_kfd_snapshots.sh** — 多輪 fence diff 確認是否推進
+2. **queue_doctor** — wptr/rptr 鐵證（跨 snapshot 凍結不動 = 真 hang）
    ```bash
-   sudo ./tools/dump_kfd_snapshots.sh -n 3 -i 5
+   python3 tools/debug_scripts/02_umr_queue_doctor.py --pid $PID --samples 3 --interval 10
    ```
-3. **dump_sdma_registers.sh** — SDMA 暫存器完整 dump
+3. **04_dump_kfd_snapshots.sh** — 多輪 fence diff 確認是否推進
    ```bash
-   sudo ./tools/dump_sdma_registers.sh
+   sudo tools/debug_scripts/04_dump_kfd_snapshots.sh --snapshots 3 --interval 5
    ```
-4. **rocgdb** — 看 CPU thread 是否卡在 kernel wait
+4. **03_dump_sdma_registers.sh** — SDMA 暫存器完整 dump
+   ```bash
+   sudo tools/debug_scripts/03_dump_sdma_registers.sh
+   ```
+5. **rocgdb** — 看 CPU thread 是否卡在 kernel wait
    ```bash
    rocgdb -batch -ex 'set pagination off' -ex 'thread apply all bt' -p $PID
    ```

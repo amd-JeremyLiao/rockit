@@ -36,7 +36,10 @@ dmesg 有 "job timedout" / "GPU reset"?
    ```bash
    dmesg | grep -iE 'reset|timeout|job.*timed|whole chip'
    ```
-2. **dump_sdma_registers.sh** — 看 SDMA STATUS_REG
+2. **03_dump_sdma_registers.sh** — 看 SDMA STATUS_REG
+   ```bash
+   sudo tools/debug_scripts/03_dump_sdma_registers.sh
+   ```
 3. **fence_info** — 確認哪個 ring 的 fence stuck 導致 timeout
 
 ## 可能的 Root Cause
