@@ -167,6 +167,22 @@ tools/debug_scripts/09_collect_docker_amd_log.sh --pid <PID>
 tools/debug_scripts/09_collect_docker_amd_log.sh --container <NAME>
 ```
 
+### 4.1 hang 觸發後的三階段順序
+
+偵測到 hang（monitor log 出現疑似 hang 標記）後，採集要照這個順序，**不可調換**：
+
+| 階段 | 內容 | 為什麼是這個順序 |
+|------|------|-----------------|
+| **STAGE 1 安全** | `06_collect_all_gpu_debug.sh --skip-cpc --skip-waves --skip-aql-queue`<br>（queue_doctor 約 13 分鐘 + sdma + kfd） | 全部走 debugfs，不會殺 host，先把最可靠的證據拿到手 |
+| **STAGE 2 CLR log** | 複製 runtime log 到 bundle | **必須在 CPC 之前**。CPC 可能 abort 或殺 host，那時 CLR log 就撈不到了 |
+| **STAGE 3 CPC / waves** | 背景執行安全包裝版（見第 5 節） | 風險最高，放最後。即使這階段失敗，前兩階段的資料已經落盤 |
+
+`--skip-cpc --skip-waves` **不是放棄 CPC**，只是把它移到 STAGE 3 用安全方式跑。
+UMR 內部的 queue_doctor / kfd / sdma / full-ring 一個都沒有 skip。
+
+自動化採集時（由 watchdog 腳本觸發），同樣照這個順序，且 STAGE 3 要用 nohup
+背景執行 + 輪詢 log，不要讓 watchdog 卡在前景等待。
+
 ---
 
 ## 5. CPC / waves 的安全限制（重要）
@@ -449,6 +465,32 @@ kill -TERM -- "-$KFD_TRACE_PGID" 2>/dev/null || true
 - workload 基本配置：GPU 可見性、`GPU_MAX_HW_QUEUES`、process/worker 數、stream 數、`HSA_USE_SVM`、`SVC_GC`
 
 **不要只交付 `.tgz` 而遺失驗證結果、工具 commit 和現場簽名。**
+
+### 13.1 交付格式
+
+多輪採集之間格式要一致，分析的人才能用同一套腳本處理：
+
+- `queue_doctor/` 和 `kfd/` **扁平展開**，不要再包一層
+- `cpc_waves/` 放子目錄
+- CLR log 放 capture 目錄頂層
+- 最外層額外放整包 `.tar.gz`（與其他來源的封存檔分開放，避免混淆）
+
+### 13.2 大檔傳輸
+
+CLR log 動輒 1-2GB，單一 SSH channel 很容易斷。傳輸時必須：
+
+- 帶**斷點續傳**（`rsync --partial --append-verify` 或 `scp` 搭配重試）
+- 帶**自動重連**，不要假設一次傳完
+- 傳完後對照 checksum，確認沒有截斷
+
+```bash
+# 斷點續傳範例
+rsync -avP --partial --append-verify \
+  "${BUNDLE}.tgz" <UPLOAD_HOST>:<DEST_DIR>/
+```
+
+不要把含有 GPU/host virtual address、signal handle、process 資訊的原始 bundle
+上傳到公開服務（見第 1.3 節）。
 
 ---
 

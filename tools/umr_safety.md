@@ -58,6 +58,11 @@ sudo /usr/local/bin/umr -i <INST> -vmp <0..3> -O bits,halt_waves,no_backtrace -w
 
 instance 編號用 `umr --script instances` 查，不要臆測。
 
+instance 編號不等於 GPU 編號。在 8-XCC 的 MI308X 上實測到的對應是
+`GPU4 = inst33`、`GPU5 = inst41`、`GPU6 = inst49`——每顆 GPU 相差 8（對應 8 個 XCC）。
+這個 stride 會隨 ASIC 與 XCD 配置改變，**每次都要重新查，不要套用其他機器的數字**。
+指錯 instance 會讀到別顆卡或別個 XCC 的暫存器，拿到看似合理但完全錯誤的值。
+
 ## 2. cpc 不是確認 hang 的必要條件
 
 判定 hang 的鐵證是 **wptr ≠ rptr 且跨多次 snapshot 凍結不動**，這個從安全路徑（queue_doctor 讀 debugfs）就拿得到。
