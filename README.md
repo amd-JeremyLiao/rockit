@@ -64,21 +64,33 @@ AMD GPU hang 診斷工具庫 + 雙層知識庫。在 Cursor 中開啟此 project
 
 ## 快速開始
 
-### 1. 遇到 GPU hang，先跑初始收集
+### 1. 確認目標 PID
+
+工具需要明確的目標，不要用自動偵測（多 process 環境會抓錯）：
 
 ```bash
-sudo ./tools/collect_hang_info.sh all
+rocm-smi --showpids                  # 看哪些 process 在用 GPU
+docker inspect -f '{{.State.Pid}}' <container>   # 容器 workload
 ```
 
-### 2. 在 Cursor 中開啟此 project，描述問題
+### 2. 跑初始收集
+
+```bash
+sudo ./tools/collect_hang_info.sh <PID>
+```
+
+要交付給他人分析時改走完整採集，見
+[hang_collection_sop](knowledge/driver/playbooks/hang_collection_sop.md)。
+
+### 3. 在 Cursor 中開啟此 project，描述問題
 
 ```
-GPU 卡住了，dmesg 有 sdma timeout，process 卡在 hipMemcpy
+GPU 卡住了，dmesg 有 sdma timeout，process 卡在 hipMemcpy，PID 是 12345
 ```
 
-AI 會自動走上面的閉環流程。
+Agent 會依你提供的資訊決定從哪個 phase 開始。已經有 log 就不會要你重跑採集。
 
-### 3. 或直接觸發診斷 skill
+### 4. 或直接觸發診斷 skill
 
 ```
 幫我診斷這個 GPU hang 問題
@@ -90,12 +102,16 @@ AI 會自動走上面的閉環流程。
 rockit/
 ├── .cursor/
 │   ├── rules/                     # AI 行為規則
-│   │   ├── project.mdc            # 全域規則 + 雙層路由
-│   │   ├── diagnose.mdc           # 症狀診斷流程
+│   │   ├── project.mdc            # 全域規則 + 雙層路由（alwaysApply）
+│   │   ├── intake-gate.mdc        # 啟動門檻 Gate 0/1/2（alwaysApply）
+│   │   ├── diagnose.mdc           # P2 分層路由 + P3 知識庫搜尋
 │   │   ├── recommend-tool.mdc     # 工具推薦邏輯 + 安全禁令
 │   │   └── interpret-log.mdc      # Log 解讀規則
 │   └── skills/
-│       └── diagnose/SKILL.md      # 閉環診斷 skill（5 輪迭代 + 雙出口）
+│       └── diagnose/SKILL.md      # 閉環診斷 skill（P0-P5 + entry router）
+│
+├── assets/
+│   └── diagnostic_flow.png        # 流程圖
 │
 ├── tools/
 │   ├── umr_safety.md              # UMR 安全分級（執行前必讀）
@@ -124,8 +140,10 @@ rockit/
 │       ├── _index.md
 │       ├── references.md          # 規格書 / 原始碼 / 工具文件索引
 │       ├── symptoms/              # sdma_fence_stuck, rdma_pin_rejected, ...
-│       ├── playbooks/             # hang_collection_sop, sdma_fence_debug, ...
-│       └── cases/                 # alibaba_rdma_underflow, sdma_fence_evidence
+│       ├── playbooks/             # hang_collection_sop, sdma_fence_debug,
+│       │                          #   timeout_death_map, wait_lifecycle
+│       └── cases/                 # alibaba_rdma_underflow, sdma_fence_evidence,
+│                                  #   customer_config_risk
 │
 └── README.md                      # 本文件
 ```
