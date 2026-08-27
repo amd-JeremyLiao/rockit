@@ -1,0 +1,3 @@
+# Windows NTFS alternate data streams leaked into WSL by file copies.
+# Colons in these filenames break clones on native Windows.
+*:Zone.Identifier
