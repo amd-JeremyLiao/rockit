@@ -9,8 +9,11 @@
 | 位置 | 說明 |
 |------|------|
 | `tools/*.sh`、`tools/*.md` | rockit 自有工具與文件 |
-| `tools/debug_scripts/` | submodule：ROCm Forensics Toolkit（編號 00-15 的採集腳本） |
+| `tools/debug_scripts/` | submodule：[yuanwei2023/debug_scripts](https://github.com/yuanwei2023/debug_scripts)（ROCm Forensics Toolkit，編號 00-15 採集腳本 + cpc_parser + log_server） |
 | `tools/hiper/` | submodule：HIPER（HIP API record/replay） |
+
+採集時務必記錄 submodule 的實際 commit（`git -C tools/debug_scripts rev-parse HEAD`），
+交付報告不要只寫「latest」。
 
 ## 工具 → 系統層級對照
 
@@ -59,6 +62,9 @@
 | `03_dump_sdma_registers.sh` | SDMA 暫存器 dump | 懷疑 SDMA 引擎 hang | 安全 |
 | `10_dump_full_user_queue_rings.sh` | 完整 ring dump | 需要看歷史 packet | 安全 |
 | `13_dump_aql_queues_gdb.sh` | AQL queue via gdb | 需要 runtime 側 queue 結構 | 安全（會 attach） |
+| `15_trace_kfd_queue.sh` | continuous KFD trace | **必須在 workload 啟動前開**，記錄 queue 全生命週期時序 | 改系統 debug 狀態 |
+| `cpc_parser` | CPC 輸出解析 | 離線分析已抓到的 CPC 資料 | 安全（離線） |
+| `log_server` | log 瀏覽介面 | 檢視 bundle 內容 | 安全（離線） |
 | `05_dump_all_cpc_info.sh` | CPC 狀態 | **僅在安全包裝下使用** | **致命（預設模式殺 host）** |
 | `08_dump_all_gpu_waves.sh` | wave 狀態 | **僅在安全包裝下使用** | **致命（`--halt-waves`）** |
 | fence_info (手動) | 快速確認 ring stuck | 快速判斷 fence 是否推進 | 安全 |

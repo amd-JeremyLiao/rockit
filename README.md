@@ -69,11 +69,12 @@ rockit/
 │   ├── rocgdb_cheatsheet.md       # rocgdb 常用命令速查
 │   ├── debug_agent_guide.md       # ROCm Debug Agent 指南
 │   ├── _coverage.md               # 工具覆蓋對照表
-│   ├── debug_scripts/             # submodule: ROCm Forensics Toolkit
+│   ├── debug_scripts/             # submodule: yuanwei2023/debug_scripts
 │   │   ├── 02_umr_queue_doctor.py     # queue 診斷主力（wptr/rptr 鐵證）
 │   │   ├── 03_dump_sdma_registers.sh  # SDMA 暫存器 dump
 │   │   ├── 04_dump_kfd_snapshots.sh   # KFD 多輪快照 + fence diff
 │   │   ├── 06_collect_all_gpu_debug.sh # 完整 bundle 採集入口
+│   │   ├── 15_trace_kfd_queue.sh      # continuous trace（workload 啟動前開）
 │   │   └── ...                        # 05/08 為致命工具，見 umr_safety.md
 │   └── hiper/                     # submodule: HIPER (HIP record/replay)
 │
@@ -111,6 +112,7 @@ git submodule update --init --recursive
 | 02_umr_queue_doctor.py | KFD/GPU | wptr≠rptr 鐵證、MQD、pending packets | 安全 |
 | 04_dump_kfd_snapshots.sh | KFD/Driver | fence diff + KFD queue 詳細 | 安全 |
 | 03_dump_sdma_registers.sh | GPU HW | SDMA 暫存器完整 dump | 安全 |
+| 15_trace_kfd_queue.sh | KFD | continuous trace（**workload 啟動前開**） | 改系統 debug 狀態 |
 | 05_dump_all_cpc_info.sh | GPU HW | CPC 狀態 | **致命（預設模式殺 host）** |
 | 08_dump_all_gpu_waves.sh | GPU HW | wave 狀態 | **致命（`--halt-waves`）** |
 | rocgdb | CLR + ROCR + GPU | CPU/GPU thread debug + wave | 安全 |

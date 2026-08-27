@@ -3,4 +3,4 @@
 	url = git@github.com:ROCm/HIPER.git
 [submodule "tools/debug_scripts"]
 	path = tools/debug_scripts
-	url = git@github.com:chun-wan/debug_scripts.git
+	url = https://github.com/yuanwei2023/debug_scripts.git

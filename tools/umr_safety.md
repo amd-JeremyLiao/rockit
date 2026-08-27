@@ -64,6 +64,22 @@ instance 編號用 `umr --script instances` 查，不要臆測。
 
 CP 內部暫存器（cpc）是加分項，不是必需品，而且也可以從離線 scandump 安全取得。**不要為了拿 cpc 而冒殺 host 的風險。**
 
+### 來源差異（重要）
+
+關於 CPC 採集，目前有兩份互相衝突的實測經驗：
+
+| | MI308X 現場實測（本文採用） | 上游採集 Recipe |
+|---|---|---|
+| `05_dump_all_cpc_info.sh` 預設模式 | host-killer，絕不可跑 | 列為標準採集項，正常執行 |
+| XCC 範圍 | 只能 0-3，0-7 全迴圈零次存活 | 未設限制 |
+| `06` 執行方式 | 必須 `--skip-cpc --skip-waves` | 完整模式 |
+
+差異可能來自 ASIC 型號、driver 版本或 XCD 配置。**rockit 取保守值為預設**：
+先假設會殺 host，需要 CPC 時走本文的安全包裝版。
+
+若你的環境已驗證完整模式安全（專用 debug 節點、已知 ASIC/driver 組合），可以使用
+完整模式，但在新環境第一次使用前務必先小規模驗證，不要直接套用他人的成功經驗。
+
 ## 3. GPU instance index 與 CPU 平台
 
 UMR 會根據 CPU 平台調整 GPU instance index：

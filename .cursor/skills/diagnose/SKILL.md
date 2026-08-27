@@ -163,4 +163,18 @@ excluded: [...]
 tools/debug_scripts/06_collect_all_gpu_debug.sh --pid $PID --skip-cpc --skip-waves --skip-aql-queue
 ```
 
-現場採集完整流程見 `knowledge/driver/playbooks/hang_collection_sop.md`。
+### 正式現場採集必做事項
+
+要交付給他人分析的 bundle，必須走完整 SOP
+（`knowledge/driver/playbooks/hang_collection_sop.md`），不可只跑 collector 就交件：
+
+- **採集前後現場簽名**：記錄 PID / 業務 stats / GPU util 簽名並 diff。現場變了要建立
+  `WARNING_LOG_MAY_BE_INVALID.txt`，bundle 保留不刪
+- **記錄工具 commit**：`git -C tools/debug_scripts rev-parse HEAD` 與 UMR commit，
+  不可只寫「latest」
+- **bundle 完整性驗證**：`final_failures=0`、full-ring raw 數 == decoded 數、
+  各 collector 產出非空
+- **hang 判定不能只看 GPU=100%**：要同時確認 PID 未變、業務 stats 停止推進、
+  VRAM 仍被佔用
+- **continuous trace 與 CLR log 必須在 workload 啟動前就設**。若 hang 後才開，
+  報告要註明缺少 hang 形成過程的時序，不可把空 trace 解釋成「hang 前沒有 queue 操作」

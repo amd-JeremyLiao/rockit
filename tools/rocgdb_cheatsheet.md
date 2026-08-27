@@ -71,3 +71,31 @@ HIP_LAUNCH_BLOCKING=1 \
 LD_PRELOAD=/opt/rocm/lib/librocm-debug-agent.so \
 rocgdb --args ./your_program
 ```
+
+## AQL packet 解碼（container 內手動版）
+
+`tools/debug_scripts/13_dump_aql_queues_gdb.sh` 的輕量替代方案，適合直接在 container
+裡跑。需要 `aql_packet_decode_gdb.py`（在 `tools/debug_scripts/` 裡）。
+
+```bash
+# 1. container 內安裝 gdb（需支援 Python scripting）
+# 2. 把 aql_packet_decode_gdb.py 放進 container
+# 3. hang 發生後進 container 執行
+/usr/bin/gdb -p $(pidof my_app) \
+  -ex "source aql_packet_decode_gdb.py" \
+  -batch
+```
+
+輸出檔路徑會顯示在執行提示中。
+
+**注意：** `/opt/rocm/bin/rocgdb-py3.11` 目前 source `aql_packet_decode_gdb.py` 會 crash，
+用系統 `/usr/bin/gdb` 或自建的 upstream GDB（`00_pull_build_gdb.sh`）。
+
+搭配記憶體 dump 取得 packet 原始內容：
+
+```bash
+# 依需要指定 offset 與長度，見 manual_commands.md 的 signal 讀取段落
+sudo dd if=/proc/$(pidof my_app)/mem \
+  iflag=skip_bytes,count_bytes \
+  skip=$((ADDR)) count=<LEN> status=none | xxd -e -g8
+```
