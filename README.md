@@ -59,8 +59,13 @@ AMD GPU hang 診斷工具庫 + 雙層知識庫。在 Cursor 中開啟此 project
 
 ### 兩種 Report 輸出
 
-- **KNOWN → HTML Report**：Root cause SVG flowchart + 修復方案 + 相關 case 引用
-- **UNKNOWN → JIRA Report**（markdown，可直接貼 JIRA）：環境、log 摘要、已排除可能性、疑似 root cause、建議下一步。自動寫回 `knowledge/{layer}/cases/`，標記 `status: unresolved`
+- **KNOWN → HTML Report**：Root cause flowchart + 修復方案 + 相關 case 引用
+- **UNKNOWN → JIRA Report**：依團隊 bug 模板產出（Bug Description / Failure Summary /
+  Configuration / Impacted Scope / Customer Impact / Workaround / Diagnostic Evidence /
+  Additional Info），可直接貼 JIRA。rockit 填得出來的欄位會填滿，填不了的標
+  `[需人工補充]`。同時寫回 `knowledge/{layer}/cases/`，標記 `status: unresolved`
+
+JIRA 模板定義在 [.cursor/skills/diagnose/SKILL.md](.cursor/skills/diagnose/SKILL.md) 的 P4 段落。
 
 ## 快速開始
 

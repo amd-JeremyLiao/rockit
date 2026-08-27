@@ -134,29 +134,103 @@ tools/debug_scripts/06_collect_all_gpu_debug.sh --pid <PID> \
 ## References  匹配到的 symptoms / playbooks / cases 路徑
 ```
 
-**UNKNOWN → JIRA report**（markdown，可直接貼 JIRA）：
-
-```markdown
-## 環境
-Host / Container / GPU / ROCm version / kernel
-
-## 問題描述
-使用者原始描述 + 時間線
-
-## 已收集的 Log
-每個工具輸出的關鍵摘要（附完整 log 路徑）
-
-## 已排除的可能性
-每輪比對 RAG 後排除了什麼、依據是什麼
-
-## 疑似 Root Cause
-目前最可能的方向
-
-## 建議下一步
-還需要收集什麼資訊、建議誰來看（runtime team / driver team）
-```
+**UNKNOWN → JIRA report**：依團隊 bug 模板產出，格式見下方
+「JIRA Report 模板」。
 
 **exit** → P5（UNKNOWN 時）或完成（KNOWN）
+
+#### JIRA Report 模板
+
+直接輸出以下 markdown，可貼進 JIRA。**rockit 能填的欄位一律填滿，
+填不了的用 `[需人工補充: ...]` 明確標示，不要留空白或編造。**
+
+```markdown
+## Bug Description
+
+[觀察到的行為 vs 預期行為。附錯誤訊息、stack trace、關鍵 log 片段]
+
+## Failure Summary
+
+[1-2 句：什麼失敗、多常發生、什麼條件下觸發]
+
+## Configuration
+
+| Field | Value |
+|---|---|
+| OEM Model/Chipset | |
+| APU/CPU | |
+| BIOS | |
+| VBIOS | |
+| Operating System | |
+| Graphics Driver | |
+| Device ID | |
+| Memory | |
+| Kernel Ver | |
+
+## Impacted Scope
+
+- 受影響的 GPU / ASIC：
+- 是否所有卡都出現，或只有特定幾顆：
+- 受影響的 workload / test：
+
+## Customer Impact
+
+- **Blocking deployment/POC/production?** [需人工補充: Yes/No + 客戶名稱與時程]
+- **Customer-Visible Symptom:** [crash / hang / 錯誤結果 / 效能下降 / 功能不可用]
+- **Blast Radius:** [需人工補充: 單一客戶 POC 還是平台級]
+
+## Workaround
+
+- **Available?** [Yes / No]
+- **Details:** [步驟、代價（效能/手動操作/功能受限）、是否已與客戶驗證]
+
+## Diagnostic Evidence
+
+- **已收集的 log:** [bundle 路徑 + 各 collector 關鍵摘要]
+- **已排除的可能性:** [每輪比對 RAG 排除了什麼、依據是什麼]
+- **疑似 Root Cause:** [目前最可能的方向]
+- **建議下一步:** [還需要什麼資訊、建議 runtime team 或 driver team 接手]
+
+## Additional Information
+
+- **Logs Attached:** [Yes / No — 附完整 log，不要只貼片段]
+- **Regression Info:** [需人工補充: last-known-good build / first-bad build]
+- **工具版本:** debug_scripts commit / UMR commit / ROCm 版本
+```
+
+#### 各欄位的填寫來源
+
+| 欄位 | rockit 可以填嗎 | 來源 |
+|------|----------------|------|
+| Bug Description | 可以 | 使用者描述 + 匹配到的 log pattern + rocgdb backtrace |
+| Failure Summary | 可以 | 症狀檔的「你會看到什麼」+ 實際觀察到的頻率 |
+| Configuration | 可以 | bundle 的 `system_info.txt`；缺的用下方命令補 |
+| Impacted Scope | 部分 | GPU 清單從 telemetry / queue_doctor 取得；workload 範圍要問 |
+| Customer Impact | 幾乎不行 | 需人工補充，rockit 不知道客戶與時程 |
+| Workaround | 部分 | 症狀檔若有 fix / workaround 就填，否則標 No |
+| Diagnostic Evidence | 可以 | P3 每一輪的排除記錄 |
+| Regression Info | 不行 | 需要 A/B build 測試 |
+
+Configuration 欄位的取得命令：
+
+```bash
+amd-smi static                          # VBIOS, Device ID, ASIC
+cat /sys/class/dmi/id/product_name      # OEM Model
+lscpu | grep 'Model name'               # APU/CPU
+cat /sys/class/dmi/id/bios_version      # BIOS
+cat /etc/os-release                     # OS
+modinfo amdgpu | grep -E '^version|srcversion'   # Graphics Driver
+free -h                                 # Memory
+uname -r                                # Kernel
+cat /opt/rocm/.info/version             # ROCm
+```
+
+正式採集的 bundle 裡 `system_info.txt` 已含大部分欄位，優先從那裡取，
+避免採集後環境變動造成不一致。
+
+> **APU/CPU 欄位別跳過。** Intel 平台的 UMR instance index 要 -2，
+> 這個欄位能讓後續分析的人知道暫存器是怎麼讀出來的。見
+> [umr_safety.md](../../../tools/umr_safety.md)。
 
 ### P5 — WRITEBACK（寫回知識庫）
 
