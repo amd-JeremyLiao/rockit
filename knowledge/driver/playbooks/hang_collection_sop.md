@@ -159,6 +159,14 @@ AMD_LOG_LEVEL_FILE=<container-visible log prefix>
 CLR log 要透過 host bind mount 或明確複製方式保存。高 log level 漲得快
 （LEVEL=5 單份約 1.8GB vs LEVEL=4 約 1GB），跑多輪要盯磁碟空間。
 
+workload 跑在 container 裡時，可用現成腳本撈：
+
+```bash
+tools/debug_scripts/09_collect_docker_amd_log.sh --pid <PID>
+# 或指定容器
+tools/debug_scripts/09_collect_docker_amd_log.sh --container <NAME>
+```
+
 ---
 
 ## 5. CPC / waves 的安全限制（重要）
