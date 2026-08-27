@@ -6,6 +6,41 @@ AMD GPU hang 診斷工具庫 + 雙層知識庫。在 Cursor 中開啟此 project
 
 ![rockit 診斷流程](assets/diagnostic_flow.png)
 
+### Phase 與進入點
+
+流程分成 6 個 phase，**不需要每次從頭開始**。Agent 會先看你手上有什麼，直接跳到對應 phase：
+
+| Phase | 前置條件 | 產出 |
+|-------|---------|------|
+| **P0 Intake** | 症狀描述 或 log | 執行模式、目標 PID |
+| **P1 Collect** | 模式 + PID | bundle / log 檔 |
+| **P2 Route** | 至少一份 log | 判定 runtime / driver 層 |
+| **P3 Iterate** | 分層 + 工具輸出 | 匹配症狀 或 判定 unknown |
+| **P4 Report** | 匹配症狀 或 unknown | HTML / JIRA report |
+| **P5 Writeback** | UNKNOWN report | `case.md`（status: unresolved） |
+
+進入點對照：
+
+| 你有什麼 | 從哪開始 |
+|---------|---------|
+| 只有症狀描述 | P0 |
+| 有 dmesg / rocgdb / fence_info 片段 | P2（跳過採集） |
+| 有完整 bundle 或多個工具輸出 | P3（直接比對） |
+| 已確認症狀，只要報告 | P4 |
+| 要補完既有 unresolved case | P5 |
+
+### 啟動門檻
+
+資訊不足時 agent 會**停下來並列出缺什麼**，不會硬跑工具。三層門檻：
+
+| 門檻 | 檢查什麼 |
+|------|---------|
+| Gate 0 | 有沒有症狀描述 / log / bundle 其中之一 |
+| Gate 1 | 執行任何工具前必須有：執行模式 + 目標 PID |
+| Gate 2 | 宣稱「是 hang」前要滿足判定條件（不能只看 GPU=100%） |
+
+定義在 [.cursor/rules/intake-gate.mdc](.cursor/rules/intake-gate.mdc)。
+
 ### 工具選擇順序
 
 每一輪迭代中，agent 按症狀推薦的優先順序逐一選擇工具：

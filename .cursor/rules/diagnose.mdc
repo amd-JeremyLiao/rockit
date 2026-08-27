@@ -3,23 +3,35 @@ description: 當使用者描述 GPU 問題症狀時，引導搜尋知識庫進�
 globs: ["knowledge/**"]
 ---
 
-使用者描述問題時的處理流程：
-1. 讀取 knowledge/_index.md 快速路由表 → 判斷 runtime 或 driver
-2. 讀取對應層的 _index.md 症狀速查表
-3. 匹配最相關的 1-3 個症狀檔案，讀取完整內容
-4. 若症狀檔標註 cross_layer_ref，也讀另一層的引用檔案
-5. 按照症狀檔的「推薦工具」順序建議使用者操作
-6. 如果有對應層的 playbook，提供逐步操作指引
-7. 如果有歷史案例匹配，引用案例的 root cause
+完整的 phase 契約與進入點定義在 `.cursor/skills/diagnose/SKILL.md`。
+本規則只描述 P2（分層路由）與 P3（RAG 迭代）的知識庫搜尋方式。
+
+## 分層路由（P2）
 
 判斷層級的線索：
-- runtime 線索：hipXxx 函式名、WaitRelaxed、HSA signal/queue、rocgdb backtrace 在 libamdhip64 / libhsa-runtime64
-- driver 線索：dmesg 訊息、amdgpu/amdkfd/kfd 關鍵字、fence_info、SDMA、eviction、GPU reset
-- 不確定時：先走 knowledge/runtime/playbooks/general_hang_triage.md
 
-迭代流程（閉環診斷）：
-- 每次推薦工具後，等使用者提供輸出
-- 解讀輸出後回到步驟 2 重新比對
-- 最多迭代 5 輪
-- 確認已知問題 → 建議生成 HTML report
-- 無法確認 → 建議生成 JIRA report，自動寫回 knowledge/{layer}/cases/
+- **runtime**：hipXxx 函式名、WaitRelaxed、HSA signal/queue、rocgdb backtrace 在
+  libamdhip64 / libhsa-runtime64
+- **driver**：dmesg 訊息、amdgpu/amdkfd/kfd 關鍵字、fence_info、SDMA、eviction、GPU reset
+- 不確定時：先走 `knowledge/runtime/playbooks/general_hang_triage.md`
+
+## 知識庫搜尋（P3 每一輪）
+
+1. 讀 `knowledge/_index.md` 快速路由表 → 確認 runtime 或 driver
+2. 讀對應層的 `_index.md` 症狀速查表
+3. 匹配最相關的 1-3 個症狀檔案，讀取完整內容
+4. 若症狀檔標註 `cross_layer_ref`，也讀另一層的引用檔案
+5. 按症狀檔的「推薦工具」順序建議操作
+6. 有對應層 playbook 時提供逐步指引
+7. 有歷史案例匹配時引用其 root cause
+
+## 迭代規則
+
+- 每次推薦工具後等使用者提供輸出（客戶機模式）或直接執行（本機模式）
+- 解讀輸出後回到步驟 1 重新比對
+- 最多 5 輪
+- 每輪結束簡短告知：這輪排除了什麼、下一輪要跑什麼、目前第幾輪
+- 確認已知問題 → P4 生成 HTML report
+- 無法確認 → P4 生成 JIRA report，並在 P5 寫回 `knowledge/{layer}/cases/`
+
+不要每次都從 P0 重來。使用者已提供的資料能讓你從哪個 phase 開始，就從那裡開始。

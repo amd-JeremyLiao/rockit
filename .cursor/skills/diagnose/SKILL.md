@@ -1,124 +1,179 @@
 # SKILL.md — GPU Hang 閉環診斷
 
 > **Use this skill when** the user says "診斷", "diagnose", "幫我跑診斷",
-> "GPU hang", "GPU 卡住", or describes a GPU hang / error / timeout symptom.
+> "GPU hang", "GPU 卡住", or describes a GPU hang / error / timeout symptom,
+> or provides GPU diagnostic logs / a debug bundle for analysis.
 
-## 閉環診斷流程
+執行前先通過 `.cursor/rules/intake-gate.mdc` 的啟動門檻。資訊不足時停下來問，不要硬跑。
 
-### Step 1: 判斷模式
+---
 
-詢問使用者：
+## Entry Router（先做這一步）
 
-- **本機**（全自動）：agent 可直接執行 shell script，需要 sudo 權限
-- **客戶機**（半自動）：agent 給命令，使用者貼回輸出
+**不要預設從頭開始。** 先看使用者手上已經有什麼，直接跳到對應 phase：
 
-### Step 2: 初始收集
+| 使用者提供了什麼 | 進入 | 理由 |
+|-----------------|------|------|
+| 只有症狀描述，沒有任何 log | **P0** | 需要先確認模式與目標才能採集 |
+| 有 dmesg / rocgdb / fence_info 片段 | **P2** | 已有證據，直接分層路由，跳過採集 |
+| 有完整 bundle 或多個工具輸出 | **P3** | 直接進 RAG 比對迭代 |
+| 已確認症狀，要求產出報告 | **P4** | 跳過診斷，直接生成 |
+| 指向既有 unresolved case 要補完 | **P5** | 更新 case 狀態 |
+| 只說「GPU 有問題」無其他資訊 | **停** | 觸發 Gate 0，先問清楚 |
 
-使用 `tools/collect_hang_info.sh` 收集完整的初始資料：
+判斷後**明確告知使用者從哪個 phase 開始、為什麼跳過前面**，例如：
+「你已經有 fence_info 輸出，我從 P2 分層路由開始，跳過採集階段。」
 
-**本機：**
+---
+
+## Phase 契約
+
+每個 phase 宣告前置條件與產出。進入前檢查 `requires`，不滿足就停下來說明缺什麼。
+
+### P0 — INTAKE（確認模式與目標）
+
+| | |
+|---|---|
+| **requires** | 症狀描述 或 log 或 bundle 路徑（Gate 0） |
+| **produces** | `mode`（local / customer）、`target`（PID 或 container） |
+
+1. 確認執行模式：
+   - **本機**：agent 可直接執行 shell script（需 sudo）
+   - **客戶機**：agent 給命令，使用者貼回輸出
+2. 取得目標 PID / process name / container 名稱
+3. 若使用者描述疑似 hang，套用 Gate 2 的判定條件確認
+
+**exit** → P1（需要採集）或 P2（已有 log）
+
+### P1 — COLLECT（採集）
+
+| | |
+|---|---|
+| **requires** | `mode` + `target`（Gate 1） |
+| **produces** | bundle 或 log 檔集合 |
+| **skip if** | 使用者已提供 bundle / log |
+
+**快速概況（輕量）：**
 ```bash
-sudo ./tools/collect_hang_info.sh all
+sudo ./tools/collect_hang_info.sh <PID>
 ```
 
-**客戶機：**
-提供以下命令讓使用者在目標機器上執行：
+**正式採集（要交付給他人分析時）：**
 ```bash
-sudo ./collect_hang_info.sh all -o /tmp/hang_diag
-# 完成後打包：tar czf hang_diag.tar.gz -C /tmp hang_diag_*
+tools/debug_scripts/06_collect_all_gpu_debug.sh --pid <PID> \
+  --skip-cpc --skip-waves --skip-aql-queue
 ```
-請使用者將輸出目錄打包或各檔案內容貼回。
 
-### Step 3: 解析輸出 + Layer 路由
+正式採集必須走完整 SOP（`knowledge/driver/playbooks/hang_collection_sop.md`），
+包含現場簽名、bundle 驗證、工具 commit 記錄。見本檔末「正式採集必做事項」。
 
-讀取 collect_hang_info.sh 的輸出檔案，判斷問題層級：
+**客戶機模式：** 提供完整命令 + 說明預期輸出中要看什麼，請使用者貼回。
 
-1. 讀 `F2_dmesg_gpu_errors.txt`：
-   - 有 amdgpu/amdkfd/sdma/fence/evict/reset → **driver 層**
-2. 讀 `D_rocgdb_*_pid*.txt`：
-   - thread 卡在 WaitRelaxed / hsaCopyStaged / libamdhip64 → **runtime 層**
-   - AMDGPU Wave 數量 > 0 → compute 在跑（runtime 可能正常）
-   - AMDGPU Wave = 0 → hang 可能在 driver/SDMA 層
-3. 讀 `E1_kfd_queues.txt` + `E2_kfd_svm_debug.txt`：
-   - queue evicted / SVM restore failed → **driver 層**
-4. 兩層都有線索 → 兩層都搜
+**exit** → P2
 
-### Step 4: 迭代搜尋 RAG（最多 5 輪）
+### P2 — ROUTE（分層路由）
+
+| | |
+|---|---|
+| **requires** | 至少一份 log 或工具輸出 |
+| **produces** | `layer`（runtime / driver / both） |
+
+依證據判斷層級：
+
+| 證據 | 判定 |
+|------|------|
+| dmesg 有 amdgpu / amdkfd / sdma / fence / evict / reset | driver |
+| rocgdb 卡在 WaitRelaxed / hsaCopyStaged / libamdhip64 | runtime |
+| AMDGPU Wave > 0 | compute 在跑，runtime 可能正常 |
+| AMDGPU Wave = 0 | hang 可能在 driver / SDMA 層 |
+| KFD queue evicted / SVM restore failed | driver |
+| 兩邊都有線索 | both（兩層都搜） |
+
+不確定時走 `knowledge/runtime/playbooks/general_hang_triage.md`。
+
+**exit** → P3
+
+### P3 — ITERATE（RAG 比對迭代，最多 5 輪）
+
+| | |
+|---|---|
+| **requires** | `layer` + 至少一份工具輸出 |
+| **produces** | `matched_symptom`（KNOWN）或 `exhausted`（UNKNOWN） |
 
 每輪：
 
 1. 讀 `knowledge/_index.md` 確認路由
-2. 讀對應層的 `{runtime|driver}/_index.md` 匹配症狀
-3. 讀匹配的 `symptoms/*.md` 完整內容
-4. 比對 log patterns
-5. 若症狀建議「跑工具 X 確認」：
-   - 本機：直接執行工具
-   - 客戶機：提供完整命令，等使用者貼回
-6. 解讀新輸出 → 回到步驟 2
+2. 讀對應層 `{runtime|driver}/_index.md` 匹配症狀
+3. 讀匹配的 `symptoms/*.md`，比對 log patterns
+4. 症狀檔若建議「跑工具 X 確認」：
+   - 本機：直接執行
+   - 客戶機：給命令，等貼回
+5. 解讀新輸出 → 回到步驟 2
 
-**退出條件：**
-- 確認匹配已知症狀 → 進入 Step 5a (KNOWN)
-- 所有推薦工具跑完仍無匹配 → 進入 Step 5b (UNKNOWN)
-- 達到 5 輪上限 → 進入 Step 5b (UNKNOWN)
+**exit 條件：**
+- 確認匹配已知症狀 → P4（KNOWN）
+- 推薦工具都跑完仍無匹配 → P4（UNKNOWN）
+- 達 5 輪上限 → P4（UNKNOWN）
 
-### Step 5a: KNOWN ISSUE — 生成 HTML Report
+每輪結束時簡短告知：這輪排除了什麼、下一輪要跑什麼、目前在第幾輪。
 
-生成類似 `coverage_report.html` 深色風格的 HTML 報告，內容：
+### P4 — REPORT（產出報告）
+
+| | |
+|---|---|
+| **requires** | `matched_symptom` 或 `exhausted` |
+| **produces** | HTML report（KNOWN）或 JIRA report（UNKNOWN） |
+
+**KNOWN → HTML report：**
 
 ```
-## Header
-- Issue 描述、環境資訊（hostname, kernel, ROCm version, GPU）、時間戳
-
-## Root Cause
-- SVG flowchart 顯示問題因果鏈
-- 文字說明 root cause
-
-## Evidence
-- 每一輪工具輸出的關鍵摘要
-- 匹配到的 log patterns
-
-## Fix
-- 修復方案或 workaround
-- 相關環境變數設定
-
-## References
-- 匹配到的 symptoms/playbooks/cases 路徑
+## Header      issue 描述、環境（hostname / kernel / ROCm / GPU）、時間戳
+## Root Cause  因果鏈流程圖 + 文字說明
+## Evidence    每輪工具輸出的關鍵摘要、匹配到的 log patterns
+## Fix         修復方案或 workaround、相關環境變數
+## References  匹配到的 symptoms / playbooks / cases 路徑
 ```
 
-### Step 5b: UNKNOWN ISSUE — 生成 JIRA Report + 寫回知識庫
-
-生成 markdown JIRA report：
+**UNKNOWN → JIRA report**（markdown，可直接貼 JIRA）：
 
 ```markdown
 ## 環境
-- Host / Container / GPU / ROCm version / kernel
+Host / Container / GPU / ROCm version / kernel
 
 ## 問題描述
-- 使用者原始描述 + 時間線
+使用者原始描述 + 時間線
 
 ## 已收集的 Log
-- 每個工具輸出的關鍵摘要（附完整 log 路徑）
+每個工具輸出的關鍵摘要（附完整 log 路徑）
 
 ## 已排除的可能性
-- 每一輪比對 RAG 後排除了什麼、依據是什麼
+每輪比對 RAG 後排除了什麼、依據是什麼
 
 ## 疑似 Root Cause
-- 目前最可能的方向
+目前最可能的方向
 
 ## 建議下一步
-- 還需要收集什麼資訊
-- 建議誰來看（runtime team / driver team）
+還需要收集什麼資訊、建議誰來看（runtime team / driver team）
 ```
 
-自動寫回知識庫：
+**exit** → P5（UNKNOWN 時）或完成（KNOWN）
+
+### P5 — WRITEBACK（寫回知識庫）
+
+| | |
+|---|---|
+| **requires** | UNKNOWN report |
+| **produces** | `knowledge/{layer}/cases/<issue_id>/case.md` |
+
 ```
 knowledge/{runtime|driver}/cases/<issue_id>/
 ├── case.md          # status: unresolved
-├── initial_log.md   # collect_hang_info.sh 關鍵輸出
+├── initial_log.md   # 初始採集關鍵輸出
 └── tool_outputs.md  # 迭代工具輸出摘要
 ```
 
-case.md frontmatter:
+`case.md` frontmatter：
+
 ```yaml
 ---
 status: unresolved
@@ -130,40 +185,45 @@ excluded: [...]
 ---
 ```
 
-### 安全禁令（迭代時絕不可違反）
+問題日後解決時，把 `status` 改為 `resolved` 並補上 root cause 與 fix，
+若是新症狀類型再到 `symptoms/` 建條目。
 
-自動執行工具時，以下命令**永遠不可自動跑**，即使在本機全自動模式：
+---
 
-- `tools/debug_scripts/05_dump_all_cpc_info.sh` 預設模式（8 卡全迴圈 + `halt_if_hws_hang=1`，已知 host-killer）
+## 安全禁令（任何 phase 都不可違反）
+
+以下命令**永遠不可自動執行**，即使在本機全自動模式：
+
+- `tools/debug_scripts/05_dump_all_cpc_info.sh` 預設模式
+  （8 卡全迴圈 + `halt_if_hws_hang=1`，已知 host-killer）
 - `umr --tool cpc` 跨 XCC 0-7 全範圍
 - `umr -O bits,halt_waves` 對非 hung GPU
 - 任何未加 `timeout` 的 cpc / halt_waves 呼叫
 
-需要 cpc / waves 時，先讀 `tools/umr_safety.md`，並向使用者說明風險後才組裝安全版命令
+需要 cpc / waves 時先讀 `tools/umr_safety.md`，向使用者說明風險後才組裝安全版
 （hung GPU only、XCC 0-3、獨立呼叫、`timeout 30`、每次檢查 uptime、nohup 背景跑）。
 
 判定 hang 的鐵證是 queue_doctor 的 `wptr != rptr`，**不需要** cpc。
 
-### 工具清單速查
+---
+
+## 工具清單速查
 
 **Runtime 層（按優先順序）：**
 1. `rocgdb -batch -ex 'set pagination off' -ex 'info threads' -ex 'thread apply all bt' -ex 'info rocm-devices' -ex 'info rocm-waves' -p $PID`
-2. `HIPER_LIGHT_MODE=1 LD_PRELOAD=libhiper.so ./app` (需事前掛載)
+2. `HIPER_LIGHT_MODE=1 LD_PRELOAD=libhiper.so ./app`（需事前掛載）
 3. `HSA_ENABLE_DEBUG=1 LD_PRELOAD=/opt/rocm/lib/librocm-debug-agent.so ./app`
 
-**Driver/GPU 層（按優先順序，全部走安全路徑）：**
+**Driver / GPU 層（按優先順序，全部走安全路徑）：**
 1. `for f in $(sudo find /sys/kernel/debug/dri/ -name amdgpu_fence_info); do sudo cat $f; done`
 2. `python3 tools/debug_scripts/02_umr_queue_doctor.py --pid $PID --samples 3 --interval 10`
 3. `sudo tools/debug_scripts/04_dump_kfd_snapshots.sh --snapshots 3 --interval 5`
 4. `sudo tools/debug_scripts/03_dump_sdma_registers.sh`
 5. `echo 'file */amdkfd/kfd_device_queue_manager.c +p' | sudo tee /sys/kernel/debug/dynamic_debug/control && sudo cat /sys/kernel/debug/kfd/rls /sys/kernel/debug/kfd/hqds /sys/kernel/debug/kfd/mqds`
 
-**一次性完整採集（安全模式）：**
-```bash
-tools/debug_scripts/06_collect_all_gpu_debug.sh --pid $PID --skip-cpc --skip-waves --skip-aql-queue
-```
+---
 
-### 正式現場採集必做事項
+## 正式採集必做事項
 
 要交付給他人分析的 bundle，必須走完整 SOP
 （`knowledge/driver/playbooks/hang_collection_sop.md`），不可只跑 collector 就交件：
@@ -174,7 +234,6 @@ tools/debug_scripts/06_collect_all_gpu_debug.sh --pid $PID --skip-cpc --skip-wav
   不可只寫「latest」
 - **bundle 完整性驗證**：`final_failures=0`、full-ring raw 數 == decoded 數、
   各 collector 產出非空
-- **hang 判定不能只看 GPU=100%**：要同時確認 PID 未變、業務 stats 停止推進、
-  VRAM 仍被佔用
+- **hang 判定不能只看 GPU=100%**：見 Gate 2
 - **continuous trace 與 CLR log 必須在 workload 啟動前就設**。若 hang 後才開，
   報告要註明缺少 hang 形成過程的時序，不可把空 trace 解釋成「hang 前沒有 queue 操作」
